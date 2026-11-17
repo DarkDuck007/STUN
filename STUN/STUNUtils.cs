@@ -13,7 +13,8 @@ namespace STUN.Attributes
                 return null;
             }
 
-            EndPoint endPoint = new IPEndPoint(IPAddress.Any, 0);
+            EndPoint endPoint = new IPEndPoint(
+                socket.AddressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any, 0);
 
             byte[] buffer = new byte[1024 * 2];
             int bytesRead = 0;
@@ -25,41 +26,79 @@ namespace STUN.Attributes
 
         public static bool TryParseHostAndPort(string hostAndPort, out IPEndPoint endPoint)
         {
+            return TryParseHostAndPort(hostAndPort, AddressFamily.Unspecified, out endPoint);
+        }
+
+        /// <summary>
+        /// Resolves an endpoint while selecting an address compatible with the socket that will use it.
+        /// This avoids sending an IPv6 DNS result through an IPv4 socket (or vice versa).
+        /// </summary>
+        public static bool TryParseHostAndPort(string hostAndPort, AddressFamily addressFamily,
+            out IPEndPoint endPoint)
+        {
             if (string.IsNullOrWhiteSpace(hostAndPort))
             {
                 endPoint = null;
                 return false;
             }
 
-            var split = hostAndPort.Split(':');
+            string host;
+            string portText;
+            hostAndPort = hostAndPort.Trim();
+            if (hostAndPort[0] == '[')
+            {
+                var bracket = hostAndPort.IndexOf(']');
+                if (bracket < 2 || bracket + 2 >= hostAndPort.Length || hostAndPort[bracket + 1] != ':')
+                {
+                    endPoint = null;
+                    return false;
+                }
+                host = hostAndPort.Substring(1, bracket - 1);
+                portText = hostAndPort.Substring(bracket + 2);
+            }
+            else
+            {
+                var separator = hostAndPort.LastIndexOf(':');
+                if (separator < 1 || hostAndPort.IndexOf(':') != separator)
+                {
+                    endPoint = null;
+                    return false;
+                }
+                host = hostAndPort.Substring(0, separator);
+                portText = hostAndPort.Substring(separator + 1);
+            }
 
-            if (split.Length != 2)
+            if (!ushort.TryParse(portText, out ushort port))
             {
                 endPoint = null;
                 return false;
             }
 
-            if (!ushort.TryParse(split[1], out ushort port))
-            {
-                endPoint = null;
-                return false;
-            }
-
-            if (!IPAddress.TryParse(split[0], out IPAddress address))
+            if (!IPAddress.TryParse(host, out IPAddress address))
             {
                 try
                 {
 #if NETSTANDARD1_3
-                    address = Dns.GetHostEntryAsync(split[0]).GetAwaiter().GetResult().AddressList.First();
+                    var addresses = Dns.GetHostEntryAsync(host).GetAwaiter().GetResult().AddressList;
 #else
-                    address = Dns.GetHostEntry(split[0]).AddressList.First();
+                    var addresses = Dns.GetHostEntry(host).AddressList;
 #endif
+                    address = addressFamily == AddressFamily.Unspecified
+                        ? addresses.FirstOrDefault()
+                        : addresses.FirstOrDefault(candidate => candidate.AddressFamily == addressFamily);
                 }
                 catch
                 {
                     endPoint = null;
                     return false;
                 }
+            }
+
+            if (address == null ||
+                (addressFamily != AddressFamily.Unspecified && address.AddressFamily != addressFamily))
+            {
+                endPoint = null;
+                return false;
             }
 
             endPoint = new IPEndPoint(address, port);

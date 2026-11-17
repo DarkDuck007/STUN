@@ -51,8 +51,9 @@ namespace STUN
         public static STUNQueryResult Query(IPEndPoint server, STUNQueryType queryType, bool closeSocket,
             NATTypeDetectionRFC natTypeDetectionRfc = NATTypeDetectionRFC.Rfc3489)
         {
-            Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            IPEndPoint bindEndPoint = new IPEndPoint(IPAddress.Any, 0);
+            Socket socket = new Socket(server.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+            IPEndPoint bindEndPoint = new IPEndPoint(
+                server.AddressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any, 0);
             socket.Bind(bindEndPoint);
 
             var result = Query(socket, server, queryType, natTypeDetectionRfc);

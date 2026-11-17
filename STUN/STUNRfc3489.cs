@@ -292,7 +292,9 @@ namespace STUN.Attributes
             {
                 result.QueryError = STUNQueryError.Success;
                 result.NATType = STUNNATType.Symmetric;
-                result.PublicEndPoint = null;
+                // Keep the mapping obtained from the primary STUN endpoint. A symmetric NAT
+                // changes mappings per destination, but the original public endpoint is still
+                // valid and callers need it for port-range discovery and hole-punch metadata.
                 return result;
             }
 
